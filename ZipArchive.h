@@ -4,26 +4,15 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-
-#ifdef WIN32
 #include <Windows.h>
-#endif // WIN32
+
+#include <zipconf.h>
+#include "UnicodeConv.h"
 
 struct zip;
 
 #define DIRECTORY_SEPARATOR '/'
 #define IS_DIRECTORY(str) (str.length()>0 && str[str.length()-1]==DIRECTORY_SEPARATOR)
-
-typedef unsigned int uint;
-
-#ifdef WIN32
-	typedef long long libzippp_int64;
-	typedef unsigned long long libzippp_uint64;
-#else
-	//标准ISO C++不支持long long
-	typedef long int libzippp_int64;
-	typedef unsigned long int libzippp_uint64;
-#endif
 
 class CZipEntry;
 
@@ -39,7 +28,7 @@ public:
 
 	enum State { ORIGINAL, CURRENT };
 
-	CZipArchive(const std::string &zipPath, const std::string &password = "");
+	CZipArchive(const std::string &zipPath, bool isUtf8 = false, const std::string &password = "");
 	virtual ~CZipArchive(void);
 
 	// 打开zip存档
@@ -101,8 +90,8 @@ public:
 	 *
 	 * getEntries可以获取zip存档的真实条目
 	 */
-	libzippp_int64 getNbEntries(State state = CURRENT) const;
-	libzippp_int64 getEntriesCount(State state = CURRENT) const
+	zip_int64_t getNbEntries(State state = CURRENT) const;
+	zip_int64_t getEntriesCount(State state = CURRENT) const
 	{
 		return getNbEntries(state);
 	}
@@ -115,7 +104,7 @@ public:
 
 	// 根据索引获取条目
 	CZipEntry getEntry(const std::string &name, bool excludeDirectories = false, bool caseSensitive = true, State state = CURRENT) const;
-	CZipEntry getEntry(libzippp_int64 index, State state = CURRENT) const;
+	CZipEntry getEntry(zip_int64_t index, State state = CURRENT) const;
 
 	// 定义条目的注释
 	std::string getEntryComment(const CZipEntry &entry, State state = CURRENT) const;
@@ -141,12 +130,15 @@ public:
 	bool addFile(const std::string &entryName, const std::string &file) const;
 
 	// 添加数据到zip存档
-	bool addData(const std::string &entryName, const void *data, uint length, bool freeData = false) const;
+	bool addData(const std::string &entryName, const void *data, unsigned int length, bool freeData = false) const;
 
 	// 添加目录条目到zip存档，entryName必须是目录(以'/'结尾)
 	bool addEntry(const std::string &entryName) const;
 
-#ifdef WIN32
+	// UTF8编码转换
+#define Utf8ToAscii(str) (isUtf8 ? ConvertUtf8ToMultiBytes(str) : str)
+#define AsciiToUtf8(str) (isUtf8 ? ConvertMultiBytesToUtf8(str) : str)
+#define DEFAULLT_ENC_FLAG (isUtf8 ? ZIP_FL_ENC_UTF_8 : ZIP_FL_ENC_GUESS)
 
 	// 解压zip存档
 	void extract(const std::string &folderName);
@@ -156,23 +148,22 @@ public:
 
 	// 合并路径
 	std::string concatPath(const std::string &strDir, const std::string &strFile, char slash = '\\');
-	
+
 	// 创建目录
 	void createFolder(const std::string &folderName);
 
 	// 获取目录路径
 	std::string getFolderPath(const std::string &filePath);
-	
-	// time_t 转成 FileTime
-	void TimetToFileTime( time_t t, LPFILETIME pft ) const;
 
-#endif // WIN32
+	// time_t 转成 FileTime
+	void TimetToFileTime(time_t t, LPFILETIME pft) const;
 
 private:
 	std::string path;
 	zip *zipHandle;
 	OpenMode mode;
 	std::string password;
+	bool isUtf8;
 
 	// 创建ZipEntry
 	CZipEntry createEntry(struct zip_stat *stat) const;
@@ -194,7 +185,7 @@ public:
 		return name;
 	}
 
-	libzippp_uint64 getIndex(void) const
+	zip_uint64_t getIndex(void) const
 	{
 		return index;
 	}
@@ -210,13 +201,13 @@ public:
 	}
 
 	// 返回文件未压缩尺寸
-	libzippp_uint64 getSize(void) const
+	zip_uint64_t getSize(void) const
 	{
 		return size;
 	}
 
 	// 返回文件压缩尺寸
-	libzippp_uint64 getInflatedSize(void) const
+	zip_uint64_t getInflatedSize(void) const
 	{
 		return sizeComp;
 	}
@@ -228,7 +219,7 @@ public:
 
 	bool isDirectory(void) const
 	{
-		return IS_DIRECTORY(name);
+		return IS_DIRECTORY(name) || dirFlag;
 	}
 
 	bool isFile(void) const
@@ -244,15 +235,28 @@ public:
 private:
 	const CZipArchive *zipFile;
 	std::string name;
-	libzippp_uint64 index;
+	zip_uint64_t index;
 	time_t time;
 	int method;
-	libzippp_uint64 size;
-	libzippp_uint64 sizeComp;
+	zip_uint64_t size;
+	zip_uint64_t sizeComp;
 	int crc;
+	bool dirFlag;
 
-	CZipEntry(const CZipArchive *zipFile, const std::string &name, libzippp_uint64 index, time_t time, int method, libzippp_uint64 size, libzippp_uint64 sizeComp, int crc) :
-	zipFile(zipFile), name(name), index(index), time(time), method(method), size(size), sizeComp(sizeComp), crc(crc) {}
+	CZipEntry(
+		const CZipArchive *zipFile, 
+		const std::string &name, zip_uint64_t index, 
+		time_t time, int method, 
+		zip_uint64_t size, zip_uint64_t sizeComp, 
+		int crc, bool dirFlag
+	) : zipFile(zipFile),
+		name(name), index(index),
+		time(time), method(method),
+		size(size), sizeComp(sizeComp),
+		crc(crc), dirFlag(dirFlag)
+	{
+
+	}
 };
 
 #endif
