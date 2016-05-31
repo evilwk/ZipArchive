@@ -116,6 +116,7 @@ public:
 	std::string readString(const std::string &zipEntry, CZipArchive::State state = CZipArchive::CURRENT) const;
 
 	// 把条目内容写入到文件
+	bool writeEntry(const std::string &zipEntry, const std::string &fileName, State state = CURRENT) const;
 	bool writeEntry(const CZipEntry &zipEntry, const std::string &fileName, State state = CURRENT) const;
 
 	// 删除条目

@@ -1,3 +1,4 @@
+#include "stdafx.h"
 #include <iosfwd>
 #include <zip.h>
 #include "ZipArchive.h"
@@ -177,7 +178,6 @@ bool CZipArchive::hasEntry(const string &name, bool excludeDirectories, bool cas
 
 CZipEntry CZipArchive::getEntry(const string &name, bool excludeDirectories, bool caseSensitive, State state) const
 {
-	string realName = Utf8ToAscii(name);
 	if (isOpen())
 	{
 		int flags = DEFAULLT_ENC_FLAG;
@@ -190,7 +190,7 @@ CZipEntry CZipArchive::getEntry(const string &name, bool excludeDirectories, boo
 		if (state == ORIGINAL)
 			flags = flags | ZIP_FL_UNCHANGED;
 
-		zip_int64_t index = zip_name_locate(zipHandle, realName.c_str(), flags);
+		zip_int64_t index = zip_name_locate(zipHandle, AsciiToUtf8(name).c_str(), flags);
 		if (index >= 0)
 			return getEntry(index);
 	}
@@ -238,7 +238,7 @@ bool CZipArchive::setEntryComment(const CZipEntry &entry, const string &comment)
 		return false;
 	
 	string realComment = AsciiToUtf8(comment);
-	bool result = zip_file_set_comment(zipHandle, entry.getIndex(), realComment.c_str(), realComment.size(), DEFAULLT_ENC_FLAG);
+	int result = zip_file_set_comment(zipHandle, entry.getIndex(), realComment.c_str(), realComment.size(), DEFAULLT_ENC_FLAG);
 	return result == 0;
 }
 
@@ -259,7 +259,7 @@ void *CZipArchive::readEntry(const CZipEntry &zipEntry, bool asText, State state
 	{
 		zip_uint64_t size = zipEntry.getSize();
 		zip_int64_t isize = (zip_int64_t)size; //there will be a warning here, but unavoidable...
-
+#pragma warning(suppress:4244)
 		char *data = new char[isize + (asText ? 1 : 0)];
 		if (!data)  //allocation error
 		{
@@ -295,6 +295,7 @@ std::string CZipArchive::readString(const std::string &zipEntry, State state /*=
 	if (content == NULL)
 		return string();
 
+#pragma warning(suppress:4244)
 	string str(content, entry.getSize());
 	delete[] content;
 	return str;
@@ -345,6 +346,11 @@ bool CZipArchive::writeEntry(const CZipEntry &zipEntry, const string &fileName, 
 	zip_fclose(zipFile);
 
 	return true;
+}
+
+bool CZipArchive::writeEntry(const std::string &zipEntry, const std::string &fileName, State state /*= CURRENT*/) const
+{
+	return writeEntry(getEntry(zipEntry), fileName, state);
 }
 
 int CZipArchive::deleteEntry(const CZipEntry &entry) const
@@ -698,6 +704,7 @@ std::string CZipArchive::getFolderPath(const std::string &filePath)
 		if (filePath[i] == '\\' || filePath[i] == '/')
 			return filePath.substr(0, i);
 	}
+	return filePath;
 }
 
 void CZipArchive::createFolder(const std::string &folderName)
@@ -710,7 +717,7 @@ void CZipArchive::createFolder(const std::string &folderName)
 		strcat_s(destPath, MAX_PATH, "\\");
 
 	char createPath[MAX_PATH] = { 0 };
-	for (int i = 0; i < strlen(destPath); ++i)
+	for (size_t i = 0; i < strlen(destPath); ++i)
 	{
 		if (destPath[i] == '\\' || destPath[i] == '/')
 		{
